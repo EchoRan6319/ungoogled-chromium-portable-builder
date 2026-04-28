@@ -1,0 +1,160 @@
+name: Build Portable Ungoogled Chromium
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: Target architecture
+        required: true
+        default: x64
+        type: choice
+        options:
+          - x64
+          - x86
+          - arm64
+      publish_release:
+        description: Publish a GitHub release
+        required: true
+        default: true
+        type: boolean
+      force_build:
+        description: Build even if the same upstream versions were already published
+        required: true
+        default: false
+        type: boolean
+      runner_labels:
+        description: JSON array for runs-on, for example ["windows-latest"] or ["self-hosted","Windows","X64"]
+        required: true
+        default: '["windows-latest"]'
+        type: string
+  schedule:
+    - cron: '23 2 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ fromJson(github.event_name == 'workflow_dispatch' && inputs.runner_labels || vars.PORTABLE_RUNNER_LABELS || '["windows-latest"]') }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DEFAULT_ARCH: x64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve build plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_ARCH: ${{ inputs.arch }}
+          INPUT_FORCE_BUILD: ${{ inputs.force_build }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arch = if ($env:EVENT_NAME -eq 'workflow_dispatch' -and $env:INPUT_ARCH) { $env:INPUT_ARCH } else { $env:DEFAULT_ARCH }
+          $forceBuild = $false
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $forceBuild = [System.Convert]::ToBoolean($env:INPUT_FORCE_BUILD)
+          }
+
+          $ungoogled = Invoke-RestMethod 'https://api.github.com/repos/ungoogled-software/ungoogled-chromium-windows/releases/latest'
+          $chromePlus = Invoke-RestMethod 'https://api.github.com/repos/Bush2021/chrome_plus/releases/latest'
+
+          $releaseTag = "portable-$arch-ugc-$($ungoogled.tag_name)-cpp-$($chromePlus.tag_name)"
+          $assetBaseName = "ungoogled-chromium-portable-$arch-$($ungoogled.tag_name)"
+
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+
+          $releaseExists = $false
+          try {
+            $uri = "https://api.github.com/repos/$($env:REPOSITORY)/releases/tags/$releaseTag"
+            Invoke-RestMethod -Uri $uri -Headers $headers | Out-Null
+            $releaseExists = $true
+          }
+          catch {
+            if ($_.Exception.Response.StatusCode.value__ -ne 404) {
+              throw
+            }
+          }
+
+          $shouldBuild = $forceBuild -or -not $releaseExists
+
+          "arch=$arch" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+          "asset_base_name=$assetBaseName" >> $env:GITHUB_OUTPUT
+          "ungoogled_tag=$($ungoogled.tag_name)" >> $env:GITHUB_OUTPUT
+          "chrome_plus_tag=$($chromePlus.tag_name)" >> $env:GITHUB_OUTPUT
+          "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "release_exists=$($releaseExists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Stop when release already exists
+        if: steps.plan.outputs.should_build != 'true'
+        run: |
+          Write-Host "Release ${{ steps.plan.outputs.release_tag }} already exists. Skipping build."
+
+      - name: Build portable package
+        if: steps.plan.outputs.should_build == 'true'
+        run: |
+          .\build-portable.ps1 -Arch '${{ steps.plan.outputs.arch }}' -Force
+
+      - name: Collect build outputs
+        if: steps.plan.outputs.should_build == 'true'
+        id: collect
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $metadataPath = Join-Path $PWD 'artifacts/ungoogled-chromium-portable-${{ steps.plan.outputs.arch }}/metadata.json'
+          if (-not (Test-Path -LiteralPath $metadataPath)) {
+            throw "metadata.json not found at $metadataPath"
+          }
+
+          $metadata = Get-Content -LiteralPath $metadataPath -Raw | ConvertFrom-Json
+          $archive = Get-ChildItem -LiteralPath (Join-Path $PWD 'artifacts') -Filter '*.7z' -File | Select-Object -First 1
+          if (-not $archive) {
+            throw 'Packed .7z artifact not found'
+          }
+
+          $portableDir = Split-Path -Parent $metadataPath
+
+          "metadata_path=$metadataPath" >> $env:GITHUB_OUTPUT
+          "portable_dir=$portableDir" >> $env:GITHUB_OUTPUT
+          "archive_path=$($archive.FullName)" >> $env:GITHUB_OUTPUT
+
+          @"
+          Built portable package for `${{ steps.plan.outputs.arch }}`.
+
+          Ungoogled Chromium: $($metadata.ungoogled.tag)
+          Chrome++: $($metadata.chrome_plus.tag)
+
+          Files:
+          - $($archive.Name)
+          - metadata.json
+          "@ | Set-Content -LiteralPath release-notes.md -Encoding UTF8
+
+      - name: Upload workflow artifact
+        if: steps.plan.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.plan.outputs.asset_base_name }}
+          path: |
+            ${{ steps.collect.outputs.archive_path }}
+            ${{ steps.collect.outputs.metadata_path }}
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: steps.plan.outputs.should_build == 'true' && (github.event_name != 'workflow_dispatch' || inputs.publish_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.plan.outputs.release_tag }}
+          name: ${{ steps.plan.outputs.asset_base_name }}
+          body_path: release-notes.md
+          files: |
+            ${{ steps.collect.outputs.archive_path }}
+            ${{ steps.collect.outputs.metadata_path }}
