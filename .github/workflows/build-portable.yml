@@ -35,12 +35,46 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      runner_labels: ${{ steps.set-runner.outputs.runner_labels }}
+    steps:
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ] || [ "$ARCH" = "all" ]; then
+            echo 'matrix=["x64","x86","arm64"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=[\"$ARCH\"]" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ARCH: ${{ inputs.arch || 'x64' }}
+
+      - name: Set runner labels
+        id: set-runner
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "runner_labels=$RUNNER_LABELS" >> "$GITHUB_OUTPUT"
+          elif [ -n "$PORTABLE_RUNNER_LABELS" ]; then
+            echo "runner_labels=$PORTABLE_RUNNER_LABELS" >> "$GITHUB_OUTPUT"
+          else
+            echo 'runner_labels=["windows-latest"]' >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUNNER_LABELS: ${{ inputs.runner_labels }}
+          PORTABLE_RUNNER_LABELS: ${{ vars.PORTABLE_RUNNER_LABELS }}
+
   build:
-    runs-on: ${{ fromJson(github.event_name == 'workflow_dispatch' && inputs.runner_labels || vars.PORTABLE_RUNNER_LABELS || '["windows-latest"]') }}
+    needs: prepare
+    runs-on: ${{ fromJson(needs.prepare.outputs.runner_labels) }}
     strategy:
       fail-fast: false
       matrix:
-        arch: ${{ (github.event_name == 'schedule' || inputs.arch == 'all') && fromJson('["x64","x86","arm64"]') || fromJson(format('["{0}"]', inputs.arch)) }}
+        arch: ${{ fromJson(needs.prepare.outputs.matrix) }}
     defaults:
       run:
         shell: pwsh
