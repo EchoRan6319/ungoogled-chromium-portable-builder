@@ -190,8 +190,6 @@ jobs:
         with:
           tag_name: ${{ steps.plan.outputs.release_tag }}
           name: ${{ steps.plan.outputs.release_tag }}
-          body_path: release-notes.md
-          append_body: true
           files: |
             ${{ steps.collect.outputs.archive_path }}
 
@@ -202,6 +200,7 @@ jobs:
     steps:
       - name: Download all metadata artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: ungoogled-chromium-portable-*
           path: all-artifacts
@@ -252,3 +251,17 @@ jobs:
           gh release upload "$release_tag" metadata.json \
             --repo "${{ github.repository }}" \
             --clobber
+
+          # Update release body with complete notes for all architectures
+          # Generate release notes from merged metadata using jq
+          echo "$merged" | jq -r '
+            reduce .[] as $entry (""; 
+              if . == "" then . else . + "\n\n" end 
+              + "### " + $entry.arch + "\n\n- Ungoogled Chromium: " + $entry.ungoogled.tag + "\n- Chrome++: " + $entry.chrome_plus.tag
+            )
+          ' > release-notes.md
+          echo "Release notes:"
+          cat release-notes.md
+          gh release edit "$release_tag" \
+            --repo "${{ github.repository }}" \
+            --notes-file release-notes.md
