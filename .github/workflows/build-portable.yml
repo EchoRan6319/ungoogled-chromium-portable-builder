@@ -133,14 +133,8 @@ jobs:
           "archive_path=$($archive.FullName)" >> $env:GITHUB_OUTPUT
 
           @"
-          Built portable package for `${{ steps.plan.outputs.arch }}`.
-
           Ungoogled Chromium: $($metadata.ungoogled.tag)
           Chrome++: $($metadata.chrome_plus.tag)
-
-          Files:
-          - $($archive.Name)
-          - metadata.json
           "@ | Set-Content -LiteralPath release-notes.md -Encoding UTF8
 
       - name: Upload workflow artifact
