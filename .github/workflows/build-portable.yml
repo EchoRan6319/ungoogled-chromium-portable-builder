@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       arch:
-        description: Target architecture
+        description: 'Target architecture (or "all" for all architectures)'
         required: true
         default: x64
         type: choice
@@ -12,6 +12,7 @@ on:
           - x64
           - x86
           - arm64
+          - all
       publish_release:
         description: Publish a GitHub release
         required: true
@@ -39,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: ${{ github.event_name == 'schedule' && fromJson('["x64","x86","arm64"]') || fromJson(format('["{0}"]', inputs.arch)) }}
+        arch: ${{ (github.event_name == 'schedule' || inputs.arch == 'all') && fromJson('["x64","x86","arm64"]') || fromJson(format('["{0}"]', inputs.arch)) }}
     defaults:
       run:
         shell: pwsh
@@ -65,7 +66,7 @@ jobs:
           $ungoogled = Invoke-RestMethod 'https://api.github.com/repos/ungoogled-software/ungoogled-chromium-windows/releases/latest'
           $chromePlus = Invoke-RestMethod 'https://api.github.com/repos/Bush2021/chrome_plus/releases/latest'
 
-          $releaseTag = "$arch-$($ungoogled.tag_name)-$($chromePlus.tag_name)"
+          $releaseTag = "$($ungoogled.tag_name)-$($chromePlus.tag_name)"
           $assetBaseName = "ungoogled-chromium-portable-$arch-$($ungoogled.tag_name)"
 
           $headers = @{
@@ -75,10 +76,13 @@ jobs:
           }
 
           $releaseExists = $false
+          $assetExists = $false
           try {
             $uri = "https://api.github.com/repos/$($env:REPOSITORY)/releases/tags/$releaseTag"
-            Invoke-RestMethod -Uri $uri -Headers $headers | Out-Null
+            $release = Invoke-RestMethod -Uri $uri -Headers $headers
             $releaseExists = $true
+            $expectedArchiveName = "$assetBaseName.7z"
+            $assetExists = [bool]($release.assets | Where-Object { $_.name -eq $expectedArchiveName })
           }
           catch {
             if ($_.Exception.Response.StatusCode.value__ -ne 404) {
@@ -86,7 +90,7 @@ jobs:
             }
           }
 
-          $shouldBuild = $forceBuild -or -not $releaseExists
+          $shouldBuild = $forceBuild -or -not $assetExists
 
           "arch=$arch" >> $env:GITHUB_OUTPUT
           "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
@@ -99,7 +103,7 @@ jobs:
       - name: Stop when release already exists
         if: steps.plan.outputs.should_build != 'true'
         run: |
-          Write-Host "Release ${{ steps.plan.outputs.release_tag }} already exists. Skipping build."
+          Write-Host "Asset for ${{ steps.plan.outputs.arch }} already exists in release ${{ steps.plan.outputs.release_tag }}. Skipping build."
 
       - name: Build portable package
         if: steps.plan.outputs.should_build == 'true'
