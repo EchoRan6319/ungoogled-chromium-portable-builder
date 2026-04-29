@@ -166,7 +166,14 @@ function Copy-DirectoryContents {
     )
 
     Ensure-Directory -Path $Destination
-    Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
+    Get-ChildItem -LiteralPath $Source -Recurse -File |
+        Where-Object { $_.Extension -notin '.7z', '.zip' } |
+        ForEach-Object {
+            $relativePath = $_.FullName.Substring($Source.Length).TrimStart('\', '/')
+            $targetPath = Join-Path $Destination $relativePath
+            Ensure-Directory -Path (Split-Path -Parent $targetPath)
+            Copy-Item -LiteralPath $_.FullName -Destination $targetPath -Force
+        }
 }
 
 function Copy-ChromePlusFile {
