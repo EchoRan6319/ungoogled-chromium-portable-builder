@@ -191,7 +191,6 @@ jobs:
           append_mode: true
           files: |
             ${{ steps.collect.outputs.archive_path }}
-            ${{ steps.collect.outputs.metadata_path }}
 
   publish:
     needs: [prepare, build]
@@ -215,40 +214,35 @@ jobs:
           merged='[]'
           release_tag=''
 
-          for metadata_file in $(find all-artifacts -name 'metadata.json' -type f); do
+          while IFS= read -r -d '' metadata_file; do
             if [ -z "$release_tag" ]; then
-              # Extract release tag from the first metadata file's ungoogled tag + chrome_plus tag
               ungoogled_tag=$(jq -r '.ungoogled.tag' "$metadata_file")
               chrome_plus_tag=$(jq -r '.chrome_plus.tag' "$metadata_file")
               release_tag="${ungoogled_tag}-${chrome_plus_tag}"
             fi
             merged=$(echo "$merged" | jq --slurpfile entry "$metadata_file" '. + $entry')
-          done
+          done < <(find all-artifacts -name 'metadata.json' -type f -print0 | sort -z)
 
           if [ "$merged" = "[]" ]; then
             echo "No metadata files found, skipping release update"
             exit 0
           fi
 
+          # Sort merged entries by arch for deterministic output
+          merged=$(echo "$merged" | jq 'sort_by(.arch)')
+
           # Write merged metadata as metadata.json
           echo "$merged" | jq '.' > metadata.json
           echo "Merged metadata:"
           cat metadata.json
 
-          # Find all .7z archives
-          archives=$(find all-artifacts -name '*.7z' -type f)
-          if [ -z "$archives" ]; then
-            echo "No archives found"
-            exit 1
-          fi
-
           # Upload all archives (clobber in case they already exist from individual build jobs)
-          for archive in $archives; do
+          while IFS= read -r -d '' archive; do
             echo "Uploading $archive..."
             gh release upload "$release_tag" "$archive" \
               --repo "${{ github.repository }}" \
               --clobber
-          done
+          done < <(find all-artifacts -name '*.7z' -type f -print0)
 
           # Upload merged metadata.json (overwrites individual ones)
           echo "Uploading merged metadata.json..."
