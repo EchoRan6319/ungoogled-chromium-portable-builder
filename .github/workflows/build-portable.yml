@@ -64,7 +64,7 @@ jobs:
           $ungoogled = Invoke-RestMethod 'https://api.github.com/repos/ungoogled-software/ungoogled-chromium-windows/releases/latest'
           $chromePlus = Invoke-RestMethod 'https://api.github.com/repos/Bush2021/chrome_plus/releases/latest'
 
-          $releaseTag = "portable-$arch-ugc-$($ungoogled.tag_name)-cpp-$($chromePlus.tag_name)"
+          $releaseTag = "$arch-$($ungoogled.tag_name)-$($chromePlus.tag_name)"
           $assetBaseName = "ungoogled-chromium-portable-$arch-$($ungoogled.tag_name)"
 
           $headers = @{
@@ -153,7 +153,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.plan.outputs.release_tag }}
-          name: ${{ steps.plan.outputs.asset_base_name }}
+          name: ${{ steps.plan.outputs.release_tag }}
           body_path: release-notes.md
           files: |
             ${{ steps.collect.outputs.archive_path }}
