@@ -1,145 +1,64 @@
-# ungoogled-chromium + Chrome++ portable builder
+# Ungoogled Chromium Portable Builder
 
-这个项目会自动：
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
 
-1. 获取 `ungoogled-software/ungoogled-chromium-windows` 最新 release。
-2. 下载对应架构的 `installer_*.exe`。
-3. 用 7-Zip 解压两遍，拿到真正的浏览器程序目录。
-4. 获取 `Bush2021/chrome_plus` 最新 release。
-5. 注入对应架构的 `version.dll` 和 `chrome++.ini`。
-6. 产出一个便携目录，以及可选的 `.7z` 打包文件。
+自动构建 [ungoogled-chromium](https://github.com/ungoogled-software/ungoogled-chromium-windows) 便携版，集成 [Chrome++](https://github.com/Bush2021/chrome_plus) 补丁。支持 x64 / x86 / arm64，GitHub Actions 每 12 小时自动检查上游更新。
 
-默认目录结构：
+## 流程
+
+```
+installer.exe → 7-Zip 解压 → 浏览器目录 → 注入 Chrome++ → 便携版产物
+```
+
+## 产物结构
 
 ```text
-artifacts/
-  ungoogled-chromium-portable-x64/
-    App/
-    Data/
-    Cache/
-    metadata.json
-downloads/
-work/
+artifacts/ungoogled-chromium-portable-<arch>/
+├── App/           # 浏览器 + Chrome++ 补丁
+├── Data/          # 用户数据
+├── Cache/         # 缓存
+└── metadata.json
 ```
 
-`App` 里是浏览器程序和 `Chrome++` 补丁，`Data` / `Cache` 是便携模式下的数据目录。  
-上游 `Chrome++` 默认配置本身已经使用：
+Chrome++ 默认配置已指向 `Data` / `Cache`，无需修改即可便携运行。
 
-```ini
-data_dir=%app%\..\Data
-cache_dir=%app%\..\Cache
-```
+## 快速开始
 
-所以不额外改配置时也能直接进入便携模式。
-
-## 依赖
-
-- Windows PowerShell 7 或更新版本
-- `7z.exe`
-- 可访问 GitHub Releases / GitHub API 的网络
-
-## 用法
-
-在项目根目录运行：
+**依赖**：PowerShell 7+、`7z.exe` 在 PATH 中、可访问 GitHub API
 
 ```powershell
+# 默认 x64
 pwsh .\build-portable.ps1
-```
 
-常用参数：
-
-```powershell
-pwsh .\build-portable.ps1 -Arch x64 -Force
-pwsh .\build-portable.ps1 -Arch x64 -SkipArchive
-pwsh .\build-portable.ps1 -Arch x64 -ChromePlusIniPath .\my-chrome++.ini -Force
+# 指定架构，强制覆盖
 pwsh .\build-portable.ps1 -Arch arm64 -Force
 ```
 
-参数说明：
-
-- `-Arch`: `x64`、`x86`、`arm64`
-- `-Force`: 覆盖已有下载和产物
-- `-SkipArchive`: 只生成目录，不额外打 `.7z`
-- `-ChromePlusIniPath`: 使用你自己的 `chrome++.ini`
-- `-KeepWorkDir`: 保留双重解压后的临时目录，方便排错
+| 参数 | 说明 |
+|------|------|
+| `-Arch` | `x64` / `x86` / `arm64`，默认 `x64` |
+| `-Force` | 覆盖已有产物 |
+| `-SkipArchive` | 只生成目录，不打 `.7z` |
+| `-ChromePlusIniPath` | 自定义 `chrome++.ini` |
+| `-KeepWorkDir` | 保留解压临时目录 |
 
 ## GitHub Actions
 
-仓库已经包含工作流 [build-portable.yml](.github/workflows/build-portable.yml)，支持两种触发：
+[build-portable.yml](.github/workflows/build-portable.yml) 支持：
 
-- `workflow_dispatch`: 手动选择单个架构（`x64` / `x86` / `arm64`）
-- `schedule`: 每 12 小时自动检查一次上游 release（0:00、12:00 UTC），**同时构建 x64、x86、arm64 三个架构**（矩阵并行）
+- **手动触发** — 选择架构，可选发布 Release
+- **定时任务** — 每 12 小时（00:00 / 12:00 UTC）检查上游，三架构并行构建
 
-工作流会：
+标签格式：`<arch>-<ungoogled_tag>-<chrome_plus_tag>`（如 `x64-147.0.7727.116-1.1-1.16.0`），已存在则自动跳过。
 
-1. 查询 `ungoogled-chromium-windows` 和 `chrome_plus` 的最新 release
-2. 生成唯一发布标签：`<arch>-<ungoogled_tag>-<chrome_plus_tag>`（例如 `x64-147.0.7727.116-1.1-1.16.0`）
-3. 如果当前仓库已经存在同标签 release，则自动跳过，避免重复构建
-4. 运行 `build-portable.ps1`
-5. 上传 `.7z` 和 `metadata.json`
-6. 在启用发布时创建 GitHub Release
+**自托管 Runner**：手动触发时输入 `["self-hosted","Windows","X64"]`；定时任务设置仓库变量 `PORTABLE_RUNNER_LABELS`。
 
-如果你想用 GitHub-hosted runner，直接手动触发即可，默认 `runs-on` 是：
+## 注意事项
 
-```json
-["windows-latest"]
-```
+- `Chrome++` 的 `version.dll` 可能被 Windows Defender 拦截，需添加排除项
+- GitHub-hosted Runner 同理，建议用自托管 runner 配置排除
 
-如果你想切到自托管 Windows runner，可以在手动触发时把 `runner_labels` 改成类似：
 
-```json
-["self-hosted","Windows","X64"]
-```
+## 许可证
 
-如果希望定时任务也跑在自托管 runner 上，可以设置仓库变量 `PORTABLE_RUNNER_LABELS`，值同样使用 JSON 数组字符串。
-
-## Release 命名
-
-工作流发布出来的 tag 和 Release 标题形如：
-
-```text
-x64-147.0.7727.116-1.1-1.16.0
-```
-
-压缩包等资源文件名保持完整命名 `ungoogled-chromium-portable-<arch>-<version>.7z`，便于辨识。
-
-## 当前上游状态
-
-我在 `2026-04-28` 验证到的最新版本：
-
-- `ungoogled-chromium-windows`: `147.0.7727.116-1.1`
-- `chrome_plus`: `1.16.0`
-
-脚本运行时会实时请求 GitHub API，不会把版本号写死。
-
-## 已知假设
-
-脚本按你确认过的真实流程实现：
-
-1. 下载 `installer_x64.exe` 这一类安装包，而不是 `windows_x64.zip`
-2. 第一次解压安装包
-3. 自动寻找内层 `7z/zip` 载荷
-4. 第二次解压真正的浏览器内容
-5. 再注入 `Chrome++`
-
-复制浏览器文件到便携目录时会自动排除 `.7z` 和 `.zip` 文件，避免将解压后的压缩包残留带入最终产物。
-
-如果未来上游安装包内部结构变化，最可能需要调整的是”第一次解压后如何定位内层载荷”的那段逻辑。
-
-## 已验证结果
-
-我已经在这台机器上实际跑到“注入补丁”前一步，确认这些环节是通的：
-
-- 能拉到 `ungoogled-chromium-windows` 最新 `installer_x64.exe`
-- 能自动完成两次解压
-- 能识别内层 `chrome.7z`
-- 能定位浏览器目录
-- 能拉到 `Chrome++` 最新 release，并取到 `x64\App\version.dll`
-
-当前唯一阻塞是 Windows 安全中心会把 `Chrome++` 的 `version.dll` 识别为潜在风险并阻止复制。脚本现在会给出更明确的错误提示。若你的环境里已经做过排除项，重新运行即可：
-
-```powershell
-pwsh .\build-portable.ps1 -Arch x64 -Force
-```
-
-同样要提醒一句：GitHub-hosted 的 Windows runner 也可能出现相同拦截。如果发生这种情况，最稳妥的做法是改用你自己的自托管 Windows runner，并给工作目录加 Defender 排除项。
+[BSD 3-Clause](LICENSE) - Copyright (c) 2026, EchoRan
