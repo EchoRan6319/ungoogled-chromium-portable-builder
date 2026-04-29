@@ -1,6 +1,6 @@
 # Ungoogled Chromium Portable Builder
 
-[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 
 自动构建 [ungoogled-chromium](https://github.com/ungoogled-software/ungoogled-chromium-windows) 便携版，集成 [Chrome++](https://github.com/Bush2021/chrome_plus) 补丁。支持 x64 / x86 / arm64，GitHub Actions 每 12 小时自动检查上游更新。
 
@@ -61,4 +61,4 @@ pwsh .\build-portable.ps1 -Arch arm64 -Force
 
 ## 许可证
 
-[BSD 3-Clause](LICENSE) - Copyright (c) 2026, EchoRan
+[GNU General Public License v3.0](LICENSE) - Copyright (c) 2026, EchoRan
