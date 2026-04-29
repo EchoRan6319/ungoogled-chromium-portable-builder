@@ -65,15 +65,15 @@ pwsh .\build-portable.ps1 -Arch arm64 -Force
 
 ## GitHub Actions
 
-仓库已经包含工作流 [build-portable.yml](</D:/EchoRan/Documents/New project/.github/workflows/build-portable.yml>)，支持两种触发：
+仓库已经包含工作流 [build-portable.yml](.github/workflows/build-portable.yml)，支持两种触发：
 
-- `workflow_dispatch`: 手动选择 `x64`、`x86`、`arm64`
-- `schedule`: 每天自动检查一次上游最新 release
+- `workflow_dispatch`: 手动选择单个架构（`x64` / `x86` / `arm64`）
+- `schedule`: 每 12 小时自动检查一次上游 release（0:00、12:00 UTC），**同时构建 x64、x86、arm64 三个架构**（矩阵并行）
 
 工作流会：
 
 1. 查询 `ungoogled-chromium-windows` 和 `chrome_plus` 的最新 release
-2. 生成唯一发布标签：`portable-<arch>-ugc-<ungoogled_tag>-cpp-<chrome_plus_tag>`
+2. 生成唯一发布标签：`<arch>-<ungoogled_tag>-<chrome_plus_tag>`（例如 `x64-147.0.7727.116-1.1-1.16.0`）
 3. 如果当前仓库已经存在同标签 release，则自动跳过，避免重复构建
 4. 运行 `build-portable.ps1`
 5. 上传 `.7z` 和 `metadata.json`

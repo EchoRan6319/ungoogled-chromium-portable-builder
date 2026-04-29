@@ -28,7 +28,7 @@ on:
         default: '["windows-latest"]'
         type: string
   schedule:
-    - cron: '23 2 * * *'
+    - cron: '0 */12 * * *'
 
 permissions:
   contents: write
@@ -36,11 +36,13 @@ permissions:
 jobs:
   build:
     runs-on: ${{ fromJson(github.event_name == 'workflow_dispatch' && inputs.runner_labels || vars.PORTABLE_RUNNER_LABELS || '["windows-latest"]') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ github.event_name == 'schedule' && fromJson('["x64","x86","arm64"]') || fromJson(format('["{0}"]', inputs.arch)) }}
     defaults:
       run:
         shell: pwsh
-    env:
-      DEFAULT_ARCH: x64
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -49,13 +51,12 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_ARCH: ${{ inputs.arch }}
           INPUT_FORCE_BUILD: ${{ inputs.force_build }}
           EVENT_NAME: ${{ github.event_name }}
           REPOSITORY: ${{ github.repository }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $arch = if ($env:EVENT_NAME -eq 'workflow_dispatch' -and $env:INPUT_ARCH) { $env:INPUT_ARCH } else { $env:DEFAULT_ARCH }
+          $arch = '${{ matrix.arch }}'
           $forceBuild = $false
           if ($env:EVENT_NAME -eq 'workflow_dispatch') {
             $forceBuild = [System.Convert]::ToBoolean($env:INPUT_FORCE_BUILD)
