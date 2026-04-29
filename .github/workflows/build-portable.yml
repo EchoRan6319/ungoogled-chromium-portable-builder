@@ -154,6 +154,7 @@ jobs:
           tag_name: ${{ steps.plan.outputs.release_tag }}
           name: ${{ steps.plan.outputs.release_tag }}
           body_path: release-notes.md
+          append_mode: true
           files: |
             ${{ steps.collect.outputs.archive_path }}
             ${{ steps.collect.outputs.metadata_path }}
