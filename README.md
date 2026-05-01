@@ -49,7 +49,7 @@ pwsh .\build-portable.ps1 -Arch arm64 -Force
 - **手动触发** — 选择架构，可选发布 Release
 - **定时任务** — 每 12 小时（00:00 / 12:00 UTC）检查上游，三架构并行构建
 
-标签格式：`<arch>-<ungoogled_tag>-<chrome_plus_tag>`（如 `x64-147.0.7727.116-1.1-1.16.0`），已存在则自动跳过。
+标签格式：`<ungoogled_tag>-<chrome_plus_tag>`（如 `147.0.7727.116-1.1-1.16.0`），已存在则自动跳过。
 
 **自托管 Runner**：手动触发时输入 `["self-hosted","Windows","X64"]`；定时任务设置仓库变量 `PORTABLE_RUNNER_LABELS`。
 
